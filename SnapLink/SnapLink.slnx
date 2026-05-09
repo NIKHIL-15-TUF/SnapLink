@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="snaplink.client/snaplink.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="SnapLink.Server/SnapLink.Server.csproj" />
+</Solution>
