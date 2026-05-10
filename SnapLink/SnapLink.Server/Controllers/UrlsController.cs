@@ -19,14 +19,14 @@ public class UrlsController : ControllerBase
     public async Task<ActionResult<ShortUrlResponse>> Create(
         CreateShortUrlRequest request)
     {
-        try
-        {
-            var result = await _shortUrlService.CreateShortUrlAsync(request);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var result = await _shortUrlService.CreateShortUrlAsync(request);
+        return Ok(result);
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<List<ShortUrlResponse>>> GetAll()
+    {
+        var result = await _shortUrlService.GetAllAsync();
+        return Ok(result);
     }
 }

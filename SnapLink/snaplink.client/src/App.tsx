@@ -1,58 +1,127 @@
-import { useEffect, useState } from 'react';
-import './App.css';
+import { useEffect, useState } from "react";
+import { createShortUrl, getAllUrls } from "./api/urlApi";
 
-interface Forecast {
-    date: string;
-    temperatureC: number;
-    temperatureF: number;
-    summary: string;
-}
+type ShortUrlResponse = {
+    id: string;
+    originalUrl: string;
+    shortUrl: string;
+    shortCode: string;
+    clickCount: number;
+};
 
 function App() {
-    const [forecasts, setForecasts] = useState<Forecast[]>();
+    const [url, setUrl] = useState("");
+    const [result, setResult] = useState<ShortUrlResponse | null>(null);
+    const [urls, setUrls] = useState<ShortUrlResponse[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    const loadUrls = async () => {
+        try {
+            const data = await getAllUrls();
+            setUrls(data);
+        } catch (error) {
+            console.error("Error loading URLs:", error);
+        }
+    };
 
     useEffect(() => {
-        populateWeatherData();
+        loadUrls();
     }, []);
 
-    const contents = forecasts === undefined
-        ? <p><em>Loading... Please refresh once the ASP.NET backend has started. See <a href="https://aka.ms/jspsintegrationreact">https://aka.ms/jspsintegrationreact</a> for more details.</em></p>
-        : <table className="table table-striped" aria-labelledby="tableLabel">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Temp. (C)</th>
-                    <th>Temp. (F)</th>
-                    <th>Summary</th>
-                </tr>
-            </thead>
-            <tbody>
-                {forecasts.map(forecast =>
-                    <tr key={forecast.date}>
-                        <td>{forecast.date}</td>
-                        <td>{forecast.temperatureC}</td>
-                        <td>{forecast.temperatureF}</td>
-                        <td>{forecast.summary}</td>
-                    </tr>
-                )}
-            </tbody>
-        </table>;
+    const handleSubmit = async () => {
+        try {
+            if (!url.trim()) {
+                alert("Please enter a URL");
+                return;
+            }
+
+            setLoading(true);
+
+            console.log("Submitting URL:", url);
+
+            const data = await createShortUrl({
+                originalUrl: url,
+            });
+
+            console.log("API Response:", data);
+
+            setResult(data);
+            setUrl("");
+            await loadUrls();
+        } catch (error) {
+            console.error("Error creating short URL:", error);
+            alert("Failed to create short URL. Check browser console.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
-        <div>
-            <h1 id="tableLabel">Weather forecast</h1>
-            <p>This component demonstrates fetching data from the server.</p>
-            {contents}
+        <div style={{ padding: "2rem", maxWidth: "900px", margin: "0 auto" }}>
+            <h1>SnapLink</h1>
+
+            <input
+                type="text"
+                placeholder="Enter URL"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                style={{
+                    width: "70%",
+                    padding: "10px",
+                    marginRight: "10px"
+                }}
+            />
+
+            <button
+                onClick={handleSubmit}
+                disabled={loading}
+            >
+                {loading ? "Shortening..." : "Shorten"}
+            </button>
+
+            {result && (
+                <div style={{ marginTop: "20px" }}>
+                    <strong>Short URL:</strong>{" "}
+                    <a
+                        href={result.shortUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        {result.shortUrl}
+                    </a>
+                </div>
+            )}
+
+            <h2 style={{ marginTop: "40px" }}>All URLs</h2>
+
+            <table border={1} cellPadding={10} style={{ width: "100%" }}>
+                <thead>
+                    <tr>
+                        <th>Original URL</th>
+                        <th>Short URL</th>
+                        <th>Clicks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {urls.map((item) => (
+                        <tr key={item.id}>
+                            <td>{item.originalUrl}</td>
+                            <td>
+                                <a
+                                    href={item.shortUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    {item.shortCode}
+                                </a>
+                            </td>
+                            <td>{item.clickCount}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
-
-    async function populateWeatherData() {
-        const response = await fetch('weatherforecast');
-        if (response.ok) {
-            const data = await response.json();
-            setForecasts(data);
-        }
-    }
 }
 
 export default App;
