@@ -17,4 +17,6 @@ public class ShortUrl
     public bool IsActive { get; set; } = true;
 
     public int ClickCount { get; set; } = 0;
+    public string? UserId { get; set; }
+    public ApplicationUser? User { get; set; }
 }
