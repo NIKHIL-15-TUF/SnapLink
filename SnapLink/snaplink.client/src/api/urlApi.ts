@@ -1,32 +1,27 @@
-import axios from "axios";
+import type { CreateShortUrlRequest, ShortUrlResponse } from '../types';
 
-const api = axios.create({
-    baseURL: "https://localhost:7175/api",
-});
+const BASE_URL = '/api';
 
-export interface CreateShortUrlRequest {
-    originalUrl: string;
-    customAlias?: string | null;
-    expiresAt?: string | null;
+export async function createShortUrl(data: CreateShortUrlRequest): Promise<ShortUrlResponse> {
+  const response = await fetch(`${BASE_URL}/urls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || 'Failed to create short URL');
+  }
+  return response.json();
 }
 
-export interface ShortUrlResponse {
-    id: string;
-    originalUrl: string;
-    shortCode: string;
-    shortUrl: string;
-    createdAt: string;
-    clickCount: number;
+export async function getAllUrls(): Promise<ShortUrlResponse[]> {
+  const response = await fetch(`${BASE_URL}/urls`);
+  if (!response.ok) throw new Error('Failed to fetch URLs');
+  return response.json();
 }
 
-export const createShortUrl = async (
-    data: CreateShortUrlRequest
-): Promise<ShortUrlResponse> => {
-    const response = await api.post<ShortUrlResponse>("/Urls", data);
-    return response.data;
-};
-
-export const getAllUrls = async (): Promise<ShortUrlResponse[]> => {
-    const response = await api.get<ShortUrlResponse[]>("/Urls");
-    return response.data;
-};
+export async function deleteUrl(id: number): Promise<void> {
+  const response = await fetch(`${BASE_URL}/urls/${id}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete URL');
+}
