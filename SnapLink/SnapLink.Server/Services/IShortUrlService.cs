@@ -5,4 +5,5 @@ namespace SnapLink.Server.Services;
 public interface IShortUrlService
 {
     Task<ShortUrlResponse> CreateShortUrlAsync(CreateShortUrlRequest request);
+    Task<string?> GetOriginalUrlAsync(string shortCode);
 }

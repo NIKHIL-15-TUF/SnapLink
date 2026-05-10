@@ -88,4 +88,23 @@ public class ShortUrlService : IShortUrlService
                 .Select(_ => Base62Chars[random.Next(Base62Chars.Length)])
                 .ToArray());
     }
+    public async Task<string?> GetOriginalUrlAsync(string shortCode)
+    {
+        var shortUrl = await _context.ShortUrls
+            .FirstOrDefaultAsync(x => x.ShortCode == shortCode && x.IsActive);
+
+        if (shortUrl == null)
+            return null;
+
+        if (shortUrl.ExpiresAt.HasValue &&
+            shortUrl.ExpiresAt.Value < DateTime.UtcNow)
+        {
+            return null;
+        }
+
+        shortUrl.ClickCount++;
+        await _context.SaveChangesAsync();
+
+        return shortUrl.OriginalUrl;
+    }
 }
