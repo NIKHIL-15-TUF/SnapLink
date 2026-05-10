@@ -6,4 +6,5 @@ public interface IShortUrlService
 {
     Task<ShortUrlResponse> CreateShortUrlAsync(CreateShortUrlRequest request);
     Task<string?> GetOriginalUrlAsync(string shortCode);
+    Task<List<ShortUrlResponse>> GetAllAsync();
 }

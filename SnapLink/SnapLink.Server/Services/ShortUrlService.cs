@@ -107,4 +107,22 @@ public class ShortUrlService : IShortUrlService
 
         return shortUrl.OriginalUrl;
     }
+    public async Task<List<ShortUrlResponse>> GetAllAsync()
+    {
+        var request = _httpContextAccessor.HttpContext!.Request;
+        var baseUrl = $"{request.Scheme}://{request.Host}";
+
+        return await _context.ShortUrls
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new ShortUrlResponse
+            {
+                Id = x.Id,
+                OriginalUrl = x.OriginalUrl,
+                ShortCode = x.ShortCode,
+                ShortUrl = $"{baseUrl}/{x.ShortCode}",
+                CreatedAt = x.CreatedAt,
+                ClickCount = x.ClickCount
+            })
+            .ToListAsync();
+    }
 }
