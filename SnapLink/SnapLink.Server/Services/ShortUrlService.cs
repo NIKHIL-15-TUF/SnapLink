@@ -22,10 +22,35 @@ public class ShortUrlService : IShortUrlService
     }
 
     public async Task<ShortUrlResponse> CreateShortUrlAsync(
-        CreateShortUrlRequest request)
+    CreateShortUrlRequest request)
     {
         string shortCode;
 
+        // Check if the URL already exists
+        var existingUrl = await _context.ShortUrls
+            .FirstOrDefaultAsync(x =>
+                x.OriginalUrl == request.OriginalUrl &&
+                x.IsActive);
+
+        // Build base URL only once
+        var httpRequest = _httpContextAccessor.HttpContext!.Request;
+        var baseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}";
+
+        // If URL already exists, return existing short URL
+        if (existingUrl != null)
+        {
+            return new ShortUrlResponse
+            {
+                Id = existingUrl.Id,
+                OriginalUrl = existingUrl.OriginalUrl,
+                ShortCode = existingUrl.ShortCode,
+                ShortUrl = $"{baseUrl}/{existingUrl.ShortCode}",
+                CreatedAt = existingUrl.CreatedAt,
+                ClickCount = existingUrl.ClickCount
+            };
+        }
+
+        // Handle custom alias
         if (!string.IsNullOrWhiteSpace(request.CustomAlias))
         {
             var aliasExists = await _context.ShortUrls
@@ -38,9 +63,11 @@ public class ShortUrlService : IShortUrlService
         }
         else
         {
+            // Generate random short code
             shortCode = await GenerateUniqueShortCodeAsync();
         }
 
+        // Create new entity
         var shortUrlEntity = new ShortUrl
         {
             OriginalUrl = request.OriginalUrl,
@@ -49,12 +76,11 @@ public class ShortUrlService : IShortUrlService
             ExpiresAt = request.ExpiresAt
         };
 
+        // Save to database
         _context.ShortUrls.Add(shortUrlEntity);
         await _context.SaveChangesAsync();
 
-        var requestContext = _httpContextAccessor.HttpContext!.Request;
-        var baseUrl = $"{requestContext.Scheme}://{requestContext.Host}";
-
+        // Return response
         return new ShortUrlResponse
         {
             Id = shortUrlEntity.Id,
