@@ -176,4 +176,84 @@ public class ShortUrlService : IShortUrlService
 
         return userId;
     }
+    // Add these methods to ShortUrlService.cs
+
+    public async Task<ShortUrlResponse> UpdateAsync(
+        Guid id,
+        UpdateShortUrlRequest request)
+    {
+        var userId = GetCurrentUserId();
+
+        var url = await _context.ShortUrls
+            .FirstOrDefaultAsync(x =>
+                x.Id == id &&
+                x.UserId == userId &&
+                x.IsActive);
+
+        if (url == null)
+            throw new KeyNotFoundException("URL not found.");
+
+        // If custom alias is changed, ensure uniqueness
+        if (!string.IsNullOrWhiteSpace(request.CustomAlias) &&
+            request.CustomAlias != url.ShortCode)
+        {
+            var aliasExists = await _context.ShortUrls
+                .AnyAsync(x =>
+                    x.ShortCode == request.CustomAlias &&
+                    x.Id != id);
+
+            if (aliasExists)
+                throw new InvalidOperationException(
+                    "Custom alias already exists.");
+
+            url.ShortCode = request.CustomAlias;
+            url.CustomAlias = request.CustomAlias;
+        }
+
+        // If custom alias is cleared, generate a new short code
+        if (string.IsNullOrWhiteSpace(request.CustomAlias) &&
+            !string.IsNullOrWhiteSpace(url.CustomAlias))
+        {
+            url.ShortCode = await GenerateUniqueShortCodeAsync();
+            url.CustomAlias = null;
+        }
+
+        // Update remaining fields
+        url.OriginalUrl = request.OriginalUrl;
+        url.ExpiresAt = request.ExpiresAt;
+
+        await _context.SaveChangesAsync();
+
+        var httpRequest = _httpContextAccessor.HttpContext!.Request;
+        var baseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}";
+
+        return new ShortUrlResponse
+        {
+            Id = url.Id,
+            OriginalUrl = url.OriginalUrl,
+            ShortCode = url.ShortCode,
+            ShortUrl = $"{baseUrl}/{url.ShortCode}",
+            CreatedAt = url.CreatedAt,
+            ClickCount = url.ClickCount
+        };
+    }
+
+    public async Task DeleteAsync(Guid id)
+    {
+        var userId = GetCurrentUserId();
+
+        var url = await _context.ShortUrls
+            .FirstOrDefaultAsync(x =>
+                x.Id == id &&
+                x.UserId == userId &&
+                x.IsActive);
+
+        if (url == null)
+            throw new KeyNotFoundException("URL not found.");
+
+        // Soft delete
+        url.IsActive = false;
+
+        await _context.SaveChangesAsync();
+    }
 }

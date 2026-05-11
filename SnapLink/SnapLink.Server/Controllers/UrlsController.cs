@@ -29,4 +29,46 @@ public class UrlsController : ControllerBase
         var result = await _shortUrlService.GetAllAsync();
         return Ok(result);
     }
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ShortUrlResponse>> Update(
+    Guid id,
+    UpdateShortUrlRequest request)
+    {
+        try
+        {
+            var result = await _shortUrlService.UpdateAsync(id, request);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        try
+        {
+            await _shortUrlService.DeleteAsync(id);
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new
+            {
+                message = ex.Message
+            });
+        }
+    }
 }
