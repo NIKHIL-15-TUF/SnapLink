@@ -2,6 +2,7 @@
 using SnapLink.Server.Data;
 using SnapLink.Server.DTOs;
 using SnapLink.Server.Models;
+using System.Security.Claims;
 
 namespace SnapLink.Server.Services;
 
@@ -24,19 +25,23 @@ public class ShortUrlService : IShortUrlService
     public async Task<ShortUrlResponse> CreateShortUrlAsync(
     CreateShortUrlRequest request)
     {
+        // Get current logged-in user
+        var userId = GetCurrentUserId();
+
         string shortCode;
 
-        // Check if the URL already exists
+        // Check if this user has already shortened the same URL
         var existingUrl = await _context.ShortUrls
             .FirstOrDefaultAsync(x =>
                 x.OriginalUrl == request.OriginalUrl &&
+                x.UserId == userId &&
                 x.IsActive);
 
-        // Build base URL only once
+        // Build base URL once
         var httpRequest = _httpContextAccessor.HttpContext!.Request;
         var baseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}";
 
-        // If URL already exists, return existing short URL
+        // If URL already exists for this user, return it
         if (existingUrl != null)
         {
             return new ShortUrlResponse
@@ -63,7 +68,7 @@ public class ShortUrlService : IShortUrlService
         }
         else
         {
-            // Generate random short code
+            // Generate unique random short code
             shortCode = await GenerateUniqueShortCodeAsync();
         }
 
@@ -73,7 +78,8 @@ public class ShortUrlService : IShortUrlService
             OriginalUrl = request.OriginalUrl,
             ShortCode = shortCode,
             CustomAlias = request.CustomAlias,
-            ExpiresAt = request.ExpiresAt
+            ExpiresAt = request.ExpiresAt,
+            UserId = userId
         };
 
         // Save to database
@@ -135,6 +141,14 @@ public class ShortUrlService : IShortUrlService
     }
     public async Task<List<ShortUrlResponse>> GetAllAsync()
     {
+        var userId = GetCurrentUserId();
+
+        var urls = await _context.ShortUrls
+        .Where(x => x.UserId == userId && x.IsActive)
+        .OrderByDescending(x => x.CreatedAt)
+        .ToListAsync();
+
+
         var request = _httpContextAccessor.HttpContext!.Request;
         var baseUrl = $"{request.Scheme}://{request.Host}";
 
@@ -150,5 +164,16 @@ public class ShortUrlService : IShortUrlService
                 ClickCount = x.ClickCount
             })
             .ToListAsync();
+    }
+    private string GetCurrentUserId()
+    {
+        var userId = _httpContextAccessor.HttpContext?
+            .User
+            .FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(userId))
+            throw new UnauthorizedAccessException("User not authenticated.");
+
+        return userId;
     }
 }
