@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SnapLink.Server.DTOs;
 using SnapLink.Server.Services;
 
@@ -6,6 +7,8 @@ namespace SnapLink.Server.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize] // FIX: All URL endpoints require authentication. Without this,
+            // anyone can create, list, or delete any user's links.
 public class UrlsController : ControllerBase
 {
     private readonly IShortUrlService _shortUrlService;
@@ -16,11 +19,17 @@ public class UrlsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ShortUrlResponse>> Create(
-        CreateShortUrlRequest request)
+    public async Task<ActionResult<ShortUrlResponse>> Create(CreateShortUrlRequest request)
     {
-        var result = await _shortUrlService.CreateShortUrlAsync(request);
-        return Ok(result);
+        try
+        {
+            var result = await _shortUrlService.CreateShortUrlAsync(request);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpGet]
@@ -29,10 +38,9 @@ public class UrlsController : ControllerBase
         var result = await _shortUrlService.GetAllAsync();
         return Ok(result);
     }
+
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<ShortUrlResponse>> Update(
-    Guid id,
-    UpdateShortUrlRequest request)
+    public async Task<ActionResult<ShortUrlResponse>> Update(Guid id, UpdateShortUrlRequest request)
     {
         try
         {
@@ -41,17 +49,11 @@ public class UrlsController : ControllerBase
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new
-            {
-                message = ex.Message
-            });
+            return NotFound(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new
-            {
-                message = ex.Message
-            });
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -65,10 +67,7 @@ public class UrlsController : ControllerBase
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(new
-            {
-                message = ex.Message
-            });
+            return NotFound(new { message = ex.Message });
         }
     }
 }

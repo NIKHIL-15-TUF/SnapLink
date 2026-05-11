@@ -1,33 +1,51 @@
-import type { CreateShortUrlRequest, ShortUrlResponse } from '../types';
+import apiClient from "./apiClient";
 
-const BASE_URL = '/api';
-
-export async function createShortUrl(data: CreateShortUrlRequest): Promise<ShortUrlResponse> {
-  const response = await fetch(`${BASE_URL}/urls`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || 'Failed to create short URL');
-  }
-  return response.json();
+export interface CreateShortUrlRequest {
+  originalUrl: string;
+  customAlias?: string;
+  expiresAt?: string | null;
 }
 
-export async function getAllUrls(): Promise<ShortUrlResponse[]> {
-  const response = await fetch(`${BASE_URL}/urls`);
-  if (!response.ok) throw new Error('Failed to fetch URLs');
-  return response.json();
+// FIX: Added UpdateShortUrlRequest (mirrors the backend DTO)
+export interface UpdateShortUrlRequest {
+  originalUrl: string;
+  customAlias?: string;
+  expiresAt?: string | null;
 }
 
-export async function getUrlStats(id: number): Promise<ShortUrlResponse> {
-  const response = await fetch(`${BASE_URL}/urls/${id}`);
-  if (!response.ok) throw new Error('Failed to fetch URL stats');
-  return response.json();
+export interface ShortUrlResponse {
+  id: string;        // FIX: UUID from backend → string, not number
+  originalUrl: string;
+  shortCode: string;
+  shortUrl: string;
+  clickCount: number;
+  createdAt: string;
+  expiresAt?: string | null;
 }
 
-export async function deleteUrl(id: number): Promise<void> {
-  const response = await fetch(`${BASE_URL}/urls/${id}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error('Failed to delete URL');
-}
+export const createShortUrl = async (
+  data: CreateShortUrlRequest
+): Promise<ShortUrlResponse> => {
+  const response = await apiClient.post<ShortUrlResponse>("/Urls", data);
+  return response.data;
+};
+
+export const getAllUrls = async (): Promise<ShortUrlResponse[]> => {
+  const response = await apiClient.get<ShortUrlResponse[]>("/Urls");
+  return response.data;
+};
+
+// FIX: id is string (UUID), not number
+export const deleteUrl = async (id: string): Promise<void> => {
+  await apiClient.delete(`/Urls/${id}`);
+};
+
+// FIX: Added missing updateUrl — the backend PUT /Urls/{id} endpoint existed
+// but had no corresponding frontend API function.
+export const updateUrl = async (
+  id: string,
+  data: UpdateShortUrlRequest
+): Promise<ShortUrlResponse> => {
+  const response = await apiClient.put<ShortUrlResponse>(`/Urls/${id}`, data);
+  return response.data;
+};

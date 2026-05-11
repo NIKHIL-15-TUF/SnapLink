@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using SnapLink.Server.Services;
 
 namespace SnapLink.Server.Controllers;
 
 [ApiController]
+[Route("r")]
 public class RedirectController : ControllerBase
 {
     private readonly IShortUrlService _shortUrlService;

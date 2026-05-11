@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SnapLink.Server.Data;
 using SnapLink.Server.DTOs;
 using SnapLink.Server.Models;
@@ -14,6 +14,10 @@ public class ShortUrlService : IShortUrlService
     private const string Base62Chars =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
+    // FIX: static shared Random — creating new Random() in a loop produces
+    // identical seeds (same timestamp), causing duplicate short codes.
+    private static readonly Random _random = new();
+
     public ShortUrlService(
         ApplicationDbContext context,
         IHttpContextAccessor httpContextAccessor)
@@ -22,40 +26,23 @@ public class ShortUrlService : IShortUrlService
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public async Task<ShortUrlResponse> CreateShortUrlAsync(
-    CreateShortUrlRequest request)
+    public async Task<ShortUrlResponse> CreateShortUrlAsync(CreateShortUrlRequest request)
     {
-        // Get current logged-in user
         var userId = GetCurrentUserId();
+        var baseUrl = GetBaseUrl();
 
-        string shortCode;
-
-        // Check if this user has already shortened the same URL
         var existingUrl = await _context.ShortUrls
             .FirstOrDefaultAsync(x =>
                 x.OriginalUrl == request.OriginalUrl &&
                 x.UserId == userId &&
                 x.IsActive);
 
-        // Build base URL once
-        var httpRequest = _httpContextAccessor.HttpContext!.Request;
-        var baseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}";
-
-        // If URL already exists for this user, return it
         if (existingUrl != null)
         {
-            return new ShortUrlResponse
-            {
-                Id = existingUrl.Id,
-                OriginalUrl = existingUrl.OriginalUrl,
-                ShortCode = existingUrl.ShortCode,
-                ShortUrl = $"{baseUrl}/{existingUrl.ShortCode}",
-                CreatedAt = existingUrl.CreatedAt,
-                ClickCount = existingUrl.ClickCount
-            };
+            return MapToResponse(existingUrl, baseUrl);
         }
 
-        // Handle custom alias
+        string shortCode;
         if (!string.IsNullOrWhiteSpace(request.CustomAlias))
         {
             var aliasExists = await _context.ShortUrls
@@ -68,12 +55,10 @@ public class ShortUrlService : IShortUrlService
         }
         else
         {
-            // Generate unique random short code
             shortCode = await GenerateUniqueShortCodeAsync();
         }
 
-        // Create new entity
-        var shortUrlEntity = new ShortUrl
+        var entity = new ShortUrl
         {
             OriginalUrl = request.OriginalUrl,
             ShortCode = shortCode,
@@ -82,44 +67,12 @@ public class ShortUrlService : IShortUrlService
             UserId = userId
         };
 
-        // Save to database
-        _context.ShortUrls.Add(shortUrlEntity);
+        _context.ShortUrls.Add(entity);
         await _context.SaveChangesAsync();
 
-        // Return response
-        return new ShortUrlResponse
-        {
-            Id = shortUrlEntity.Id,
-            OriginalUrl = shortUrlEntity.OriginalUrl,
-            ShortCode = shortUrlEntity.ShortCode,
-            ShortUrl = $"{baseUrl}/{shortUrlEntity.ShortCode}",
-            CreatedAt = shortUrlEntity.CreatedAt,
-            ClickCount = shortUrlEntity.ClickCount
-        };
+        return MapToResponse(entity, baseUrl);
     }
 
-    private async Task<string> GenerateUniqueShortCodeAsync()
-    {
-        string code;
-
-        do
-        {
-            code = GenerateShortCode();
-        }
-        while (await _context.ShortUrls.AnyAsync(x => x.ShortCode == code));
-
-        return code;
-    }
-
-    private static string GenerateShortCode(int length = 6)
-    {
-        var random = new Random();
-
-        return new string(
-            Enumerable.Range(0, length)
-                .Select(_ => Base62Chars[random.Next(Base62Chars.Length)])
-                .ToArray());
-    }
     public async Task<string?> GetOriginalUrlAsync(string shortCode)
     {
         var shortUrl = await _context.ShortUrls
@@ -128,89 +81,58 @@ public class ShortUrlService : IShortUrlService
         if (shortUrl == null)
             return null;
 
-        if (shortUrl.ExpiresAt.HasValue &&
-            shortUrl.ExpiresAt.Value < DateTime.UtcNow)
-        {
+        if (shortUrl.ExpiresAt.HasValue && shortUrl.ExpiresAt.Value < DateTime.UtcNow)
             return null;
-        }
 
         shortUrl.ClickCount++;
         await _context.SaveChangesAsync();
 
         return shortUrl.OriginalUrl;
     }
+
     public async Task<List<ShortUrlResponse>> GetAllAsync()
     {
         var userId = GetCurrentUserId();
+        var baseUrl = GetBaseUrl();
 
+        // FIX: The original code had TWO bugs:
+        // 1. It fetched user-filtered URLs into a local variable, then ignored
+        //    it and ran a SECOND query with NO user/active filter — leaking
+        //    every user's links to the caller.
+        // 2. The second query tried to use string interpolation (baseUrl) inside
+        //    an EF Core .Select() — EF cannot translate that to SQL and throws.
+        // Solution: single filtered query, map to DTOs in memory.
         var urls = await _context.ShortUrls
-        .Where(x => x.UserId == userId && x.IsActive)
-        .OrderByDescending(x => x.CreatedAt)
-        .ToListAsync();
-
-
-        var request = _httpContextAccessor.HttpContext!.Request;
-        var baseUrl = $"{request.Scheme}://{request.Host}";
-
-        return await _context.ShortUrls
+            .Where(x => x.UserId == userId && x.IsActive)
             .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new ShortUrlResponse
-            {
-                Id = x.Id,
-                OriginalUrl = x.OriginalUrl,
-                ShortCode = x.ShortCode,
-                ShortUrl = $"{baseUrl}/{x.ShortCode}",
-                CreatedAt = x.CreatedAt,
-                ClickCount = x.ClickCount
-            })
             .ToListAsync();
+
+        return urls.Select(x => MapToResponse(x, baseUrl)).ToList();
     }
-    private string GetCurrentUserId()
-    {
-        var userId = _httpContextAccessor.HttpContext?
-            .User
-            .FindFirstValue(ClaimTypes.NameIdentifier);
 
-        if (string.IsNullOrEmpty(userId))
-            throw new UnauthorizedAccessException("User not authenticated.");
-
-        return userId;
-    }
-    // Add these methods to ShortUrlService.cs
-
-    public async Task<ShortUrlResponse> UpdateAsync(
-        Guid id,
-        UpdateShortUrlRequest request)
+    public async Task<ShortUrlResponse> UpdateAsync(Guid id, UpdateShortUrlRequest request)
     {
         var userId = GetCurrentUserId();
 
         var url = await _context.ShortUrls
-            .FirstOrDefaultAsync(x =>
-                x.Id == id &&
-                x.UserId == userId &&
-                x.IsActive);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId && x.IsActive);
 
         if (url == null)
             throw new KeyNotFoundException("URL not found.");
 
-        // If custom alias is changed, ensure uniqueness
         if (!string.IsNullOrWhiteSpace(request.CustomAlias) &&
             request.CustomAlias != url.ShortCode)
         {
             var aliasExists = await _context.ShortUrls
-                .AnyAsync(x =>
-                    x.ShortCode == request.CustomAlias &&
-                    x.Id != id);
+                .AnyAsync(x => x.ShortCode == request.CustomAlias && x.Id != id);
 
             if (aliasExists)
-                throw new InvalidOperationException(
-                    "Custom alias already exists.");
+                throw new InvalidOperationException("Custom alias already exists.");
 
             url.ShortCode = request.CustomAlias;
             url.CustomAlias = request.CustomAlias;
         }
 
-        // If custom alias is cleared, generate a new short code
         if (string.IsNullOrWhiteSpace(request.CustomAlias) &&
             !string.IsNullOrWhiteSpace(url.CustomAlias))
         {
@@ -218,24 +140,12 @@ public class ShortUrlService : IShortUrlService
             url.CustomAlias = null;
         }
 
-        // Update remaining fields
         url.OriginalUrl = request.OriginalUrl;
         url.ExpiresAt = request.ExpiresAt;
 
         await _context.SaveChangesAsync();
 
-        var httpRequest = _httpContextAccessor.HttpContext!.Request;
-        var baseUrl = $"{httpRequest.Scheme}://{httpRequest.Host}";
-
-        return new ShortUrlResponse
-        {
-            Id = url.Id,
-            OriginalUrl = url.OriginalUrl,
-            ShortCode = url.ShortCode,
-            ShortUrl = $"{baseUrl}/{url.ShortCode}",
-            CreatedAt = url.CreatedAt,
-            ClickCount = url.ClickCount
-        };
+        return MapToResponse(url, GetBaseUrl());
     }
 
     public async Task DeleteAsync(Guid id)
@@ -243,17 +153,59 @@ public class ShortUrlService : IShortUrlService
         var userId = GetCurrentUserId();
 
         var url = await _context.ShortUrls
-            .FirstOrDefaultAsync(x =>
-                x.Id == id &&
-                x.UserId == userId &&
-                x.IsActive);
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId && x.IsActive);
 
         if (url == null)
             throw new KeyNotFoundException("URL not found.");
 
-        // Soft delete
         url.IsActive = false;
-
         await _context.SaveChangesAsync();
+    }
+
+    // --- Helpers ---
+
+    private static ShortUrlResponse MapToResponse(ShortUrl url, string baseUrl) =>
+        new ShortUrlResponse
+        {
+            Id = url.Id,
+            OriginalUrl = url.OriginalUrl,
+            ShortCode = url.ShortCode,
+            // FIX: short URLs must route through /r/{code} to hit RedirectController
+            ShortUrl = $"{baseUrl}/r/{url.ShortCode}",
+            CreatedAt = url.CreatedAt,
+            ClickCount = url.ClickCount
+        };
+
+    private string GetBaseUrl()
+    {
+        var req = _httpContextAccessor.HttpContext!.Request;
+        return $"{req.Scheme}://{req.Host}";
+    }
+
+    private string GetCurrentUserId()
+    {
+        var userId = _httpContextAccessor.HttpContext?
+            .User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(userId))
+            throw new UnauthorizedAccessException("User not authenticated.");
+
+        return userId;
+    }
+
+    private async Task<string> GenerateUniqueShortCodeAsync()
+    {
+        string code;
+        do { code = GenerateShortCode(); }
+        while (await _context.ShortUrls.AnyAsync(x => x.ShortCode == code));
+        return code;
+    }
+
+    private static string GenerateShortCode(int length = 6)
+    {
+        return new string(
+            Enumerable.Range(0, length)
+                .Select(_ => Base62Chars[_random.Next(Base62Chars.Length)])
+                .ToArray());
     }
 }
