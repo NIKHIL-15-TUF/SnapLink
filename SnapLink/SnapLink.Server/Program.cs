@@ -51,10 +51,12 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connectionString =
+        builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddHttpContextAccessor();
+    options.UseNpgsql(connectionString);
+}); builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
 builder.Services.AddCors(options =>
@@ -114,7 +116,13 @@ if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "SnapLink.Server v1");
     });
 }
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider
+        .GetRequiredService<ApplicationDbContext>();
 
+    db.Database.Migrate();
+}
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
