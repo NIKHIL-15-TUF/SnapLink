@@ -7,76 +7,84 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using SnapLink.Server.Models;
 using System.Text;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Swagger
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1",
-        new OpenApiInfo
-        {
-            Title = "SnapLink API",
-            Version = "v1"
-        });
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "SnapLink API",
+        Version = "v1"
+    });
 
-    options.AddSecurityDefinition("Bearer",
-        new OpenApiSecurityScheme
-        {
-            Name = "Authorization",
-            Type = SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT",
-            In = ParameterLocation.Header,
-            Description = "Enter: Bearer {your token}"
-        });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter: Bearer {your token}"
+    });
 
-    options.AddSecurityRequirement(
-        new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
         {
+            new OpenApiSecurityScheme
             {
-                new OpenApiSecurityScheme
+                Reference = new OpenApiReference
                 {
-                    Reference =
-                        new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                },
-                Array.Empty<string>()
-            }
-        });
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
+// Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     var connectionString =
         builder.Configuration.GetConnectionString("DefaultConnection");
 
     options.UseNpgsql(connectionString);
-}); builder.Services.AddHttpContextAccessor();
+});
+
+// Dependency Injection
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
-builder.Services.AddScoped<IShortUrlService, ShortUrlService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        var allowedOrigins = builder.Configuration
-            .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>()
-            ?? ["https://localhost:5174", "http://localhost:5174"];
-
-        policy.WithOrigins(allowedOrigins)
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "https://snap-link-six.vercel.app"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
+
+// Identity
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
+
+// JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]!);
 
@@ -104,18 +112,20 @@ builder.Services
                     new SymmetricSecurityKey(key)
             };
     });
-builder.Services.AddScoped<IAuthService, AuthService>();
+
 var app = builder.Build();
+
+// Enable CORS
 app.UseCors("AllowFrontend");
-// Configure middleware
-if (app.Environment.IsDevelopment())
+
+// Swagger (enabled in all environments)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SnapLink.Server v1");
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SnapLink API v1");
+});
+
+// Apply migrations automatically
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider
@@ -123,7 +133,10 @@ using (var scope = app.Services.CreateScope())
 
     db.Database.Migrate();
 }
+
+// Middleware
 app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
