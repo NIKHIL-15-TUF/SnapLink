@@ -10,10 +10,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Include="Dockerfile" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<!-- REMOVED: Microsoft.AspNetCore.OpenApi (conflicts with Swashbuckle) -->
 		<!-- REMOVED: Swashbuckle.AspNetCore.Swagger 9.0.0 (conflicts with 7.3.1) -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.7" />
