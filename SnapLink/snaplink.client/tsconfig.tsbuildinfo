@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/api/urlApi.ts","./src/hooks/useToast.ts","./src/types/index.ts"],"version":"5.7.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/authapi.ts","./src/api/apiclient.ts","./src/api/urlapi.ts","./src/components/protectedroute.tsx","./src/hooks/usetoast.ts","./src/pages/dashboardpage.1.tsx","./src/pages/dashboardpage.tsx","./src/pages/loginpage.tsx","./src/pages/registerpage.tsx","./src/types/index.ts"],"version":"5.7.3"}
