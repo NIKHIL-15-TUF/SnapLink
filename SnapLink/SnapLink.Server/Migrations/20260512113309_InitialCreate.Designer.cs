@@ -12,8 +12,8 @@ using SnapLink.Server.Data;
 namespace SnapLink.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260511104715_InitialPostgres")]
-    partial class InitialPostgres
+    [Migration("20260512113309_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
